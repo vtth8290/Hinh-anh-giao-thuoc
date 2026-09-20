@@ -105,6 +105,7 @@ h2{font-size:15px;margin:0 0 10px;font-weight:700}
 .card .c{font:700 13px var(--mono);word-break:break-all}
 .card .t{font:500 12px var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
 .filters{display:grid;grid-template-columns:2fr 1.3fr 1fr 1fr;gap:10px;align-items:end}
+#sCode:disabled{opacity:.45}
 @media (max-width:680px){.filters{grid-template-columns:1fr 1fr}.filters .f-code,.filters .f-date{grid-column:1/-1}}
 .filter-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
 .summary{margin:16px 0 10px;color:var(--muted);font-size:14px}
@@ -202,7 +203,10 @@ dialog img{width:100%;max-height:65vh;object-fit:contain;background:#000;display
   <section id="viewSearch" hidden>
     <div class="panel">
       <div class="filters">
-        <div class="f-code"><label class="lbl" for="sCode">Mã</label><input type="text" id="sCode" inputmode="numeric" autocomplete="off" placeholder="Nhập hoặc quét mã"></div>
+        <div class="f-code">
+          <div class="row" style="justify-content:space-between;margin-bottom:6px"><label class="lbl" for="sCode" style="margin:0">Mã</label><label class="toggle"><input type="checkbox" id="sAll"> Tất cả</label></div>
+          <input type="text" id="sCode" class="code" inputmode="numeric" autocomplete="off" placeholder="5 số cuối của mã">
+        </div>
         <div class="f-date"><label class="lbl" for="sDate">Ngày chụp</label><input type="date" id="sDate"></div>
         <div><label class="lbl" for="sFrom">Từ giờ</label><input type="time" id="sFrom"></div>
         <div><label class="lbl" for="sTo">Đến giờ</label><input type="time" id="sTo"></div>
@@ -211,10 +215,11 @@ dialog img{width:100%;max-height:65vh;object-fit:contain;background:#000;display
         <button class="btn primary" id="btnSearch" type="button">Tìm kiếm</button>
         <button class="btn" id="btnClearTime" type="button">Bỏ lọc thời gian</button>
       </div>
-      <p class="hint">Không chọn thời gian: hiển thị tất cả ảnh của mã. Chọn ngày (và giờ:phút nếu cần) để lọc theo thời điểm chụp.</p>
+      <p class="hint">Nhập <b>5 số cuối</b> của mã; nếu không ra thì nhập mã đầy đủ. Tick <b>Tất cả</b> để xem toàn bộ ảnh đã chụp (không cần nhập mã). Không chọn thời gian thì hiện mọi thời điểm; chọn ngày và giờ:phút để lọc theo thời điểm chụp.</p>
     </div>
     <p class="summary" id="sSummary">Nhập mã để tìm ảnh.</p>
     <div class="grid" id="sGrid"></div>
+    <div style="display:flex;justify-content:center;margin-top:14px"><button class="btn" id="btnMore" type="button" hidden>Xem thêm</button></div>
   </section>
 </div>
 
@@ -304,7 +309,7 @@ function showTab(which) {
   $("tabCap").setAttribute("aria-selected", cap); $("tabSearch").setAttribute("aria-selected", !cap);
   $("viewCap").hidden = !cap; $("viewSearch").hidden = cap;
   if (cap) { if (camWanted) startCamera(); if (mode === "scan" && finePointer) $("codeInput").focus(); }
-  else { stopCamera(); $("sCode").focus(); }
+  else { stopCamera(); if (!$("sAll").checked) $("sCode").focus(); }
 }
 $("tabCap").onclick = () => showTab("cap");
 $("tabSearch").onclick = () => showTab("search");
@@ -566,13 +571,21 @@ async function loadRecent() {
 
 /* ================= Tìm kiếm ================= */
 function toMin(t) { if (!t) return null; const [h, m] = t.split(":").map(Number); return h * 60 + m; }
+const PAGE = 60;
+let sResults = [], sShown = 0;
 async function doSearch() {
-  const code = cleanCode($("sCode").value);
-  if (!code) { $("sSummary").textContent = "Nhập mã để tìm ảnh."; $("sGrid").replaceChildren(); return; }
+  const all = $("sAll").checked, q = cleanCode($("sCode").value);
+  if (!all && !q) { $("sSummary").textContent = "Nhập 5 số cuối của mã, hoặc tick Tất cả."; $("sGrid").replaceChildren(); $("btnMore").hidden = true; return; }
   const date = $("sDate").value, from = $("sFrom").value, to = $("sTo").value;
-  $("sSummary").textContent = "Đang tìm…";
+  $("sSummary").textContent = "Đang tìm…"; $("btnMore").hidden = true;
   let items;
-  try { items = await call("timTheoMa", code); } catch (e) { $("sSummary").textContent = "Không tải được dữ liệu. Thử lại sau giây lát."; return; }
+  try { items = await call("timKiem", q, all); }
+  catch (e) {
+    // Máy chủ chưa cập nhật bản mới → tìm theo mã đầy đủ như cũ
+    if (!all && /Không có chức năng|is not a function|not defined/i.test(String(e && e.message || e))) {
+      try { items = await call("timTheoMa", q); } catch (e2) { $("sSummary").textContent = "Không tải được dữ liệu. Thử lại sau giây lát."; return; }
+    } else { $("sSummary").textContent = all ? "Không tải được toàn bộ danh sách (máy chủ cần cập nhật Code.gs mới)." : "Không tải được dữ liệu. Thử lại sau giây lát."; return; }
+  }
   let desc = "tất cả thời gian";
   if (date || from || to) {
     const fm = toMin(from) ?? 0, tm = toMin(to) ?? (23 * 60 + 59);
@@ -585,14 +598,31 @@ async function doSearch() {
     desc = (date ? `ngày ${da}/${mo}/${y}` : "mọi ngày") + ((from || to) ? `, từ ${from || "00:00"} đến ${to || "23:59"}` : "");
   }
   items.sort((a, b) => b.takenAt - a.takenAt);
+  const codes = new Set(items.map(it => it.code));
   const s = $("sSummary"); s.replaceChildren();
-  s.append(Object.assign(document.createElement("b"), { textContent: items.length + " ảnh" }), " của mã ", Object.assign(document.createElement("b"), { textContent: code }), ` — ${desc}.`);
-  renderGrid($("sGrid"), items);
-  if (!items.length) { const e = document.createElement("div"); e.className = "empty"; e.style.gridColumn = "1/-1"; e.textContent = "Không có ảnh nào khớp điều kiện."; $("sGrid").append(e); }
+  const B = t => Object.assign(document.createElement("b"), { textContent: t });
+  if (all) s.append(B(items.length + " ảnh"), ` (${codes.size} mã) — ${desc}.`);
+  else if (codes.size > 1) s.append(B(items.length + " ảnh"), " thuộc ", B(codes.size + " mã"), " có đuôi ", B(q), ` — ${desc}. Nhập mã đầy đủ để lọc đúng 1 mã.`);
+  else s.append(B(items.length + " ảnh"), " của mã ", B(codes.size ? [...codes][0] : q), ` — ${desc}.`);
+  sResults = items; sShown = 0; $("sGrid").replaceChildren();
+  if (!items.length) {
+    const e = document.createElement("div"); e.className = "empty"; e.style.gridColumn = "1/-1";
+    e.textContent = all ? "Không có ảnh nào khớp điều kiện." : (q.length < 8 ? `Không có mã nào có đuôi “${q}”. Thử nhập mã đầy đủ.` : "Không có ảnh nào khớp điều kiện.");
+    $("sGrid").append(e); return;
+  }
+  showMore();
 }
+function showMore() {
+  const next = sResults.slice(sShown, sShown + PAGE); sShown += next.length;
+  const tmp = document.createElement("div"); renderGrid(tmp, next); $("sGrid").append(...tmp.children);
+  const left = sResults.length - sShown;
+  $("btnMore").hidden = left <= 0; $("btnMore").textContent = `Xem thêm (${left} ảnh)`;
+}
+$("btnMore").onclick = showMore;
+$("sAll").onchange = () => { $("sCode").disabled = $("sAll").checked; doSearch(); };
 $("btnSearch").onclick = doSearch;
 $("sCode").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); doSearch(); } });
-["sDate", "sFrom", "sTo"].forEach(id => $(id).addEventListener("change", () => { if (cleanCode($("sCode").value)) doSearch(); }));
+["sDate", "sFrom", "sTo"].forEach(id => $(id).addEventListener("change", () => { if ($("sAll").checked || cleanCode($("sCode").value)) doSearch(); }));
 $("btnClearTime").onclick = () => { $("sDate").value = ""; $("sFrom").value = ""; $("sTo").value = ""; doSearch(); };
 
 /* ================= Xem & xoá ảnh ================= */
