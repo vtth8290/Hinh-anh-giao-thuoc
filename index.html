@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B6E5A">
+<title>Kho Ảnh Mã Vạch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script>
+/* ============ CẤU HÌNH ============
+ * Dán link Web app (đuôi /exec) của Google Apps Script vào giữa hai dấu nháy.
+ */
+const API_URL = "https://script.google.com/macros/s/AKfycbziNfsIQHPo625C8CqyuisMoSpj5pRrLosAVJ7XYXbk4GjsIaYOvWSqCkTayIuB03VYQg/exec";
+</script>
+<style>
+:root{
+  --ground:#EEF1EF; --surface:#FFFFFF; --sunken:#E3E8E5; --ink:#15201B; --muted:#5B6862;
+  --line:#CBD4CF; --accent:#0B6E5A; --accent-ink:#FFFFFF; --accent-soft:#D5ECE5;
+  --laser:#E0362C; --hold:#F2B233; --warn:#9A5B00; --danger:#B3261E; --danger-soft:#F8DEDC;
+  --shadow:0 1px 2px rgba(20,40,30,.08),0 8px 24px rgba(20,40,30,.08);
+  --sans:"Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#0F1512; --surface:#18201C; --sunken:#212B26; --ink:#E6EDE9; --muted:#95A39C;
+  --line:#2F3B35; --accent:#3CC4A2; --accent-ink:#06231B; --accent-soft:#17362D;
+  --laser:#FF5A4E; --warn:#E7A94B; --danger:#FF8A80; --danger-soft:#3A1E1C;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+img{max-width:100%}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;padding-inline:12px;padding-block:env(safe-area-inset-top,0px) calc(32px + env(safe-area-inset-bottom,0px))}
+.wrap{max-width:980px;margin:0 auto}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-block:12px 10px}
+.brand{display:flex;align-items:center;gap:10px}
+.brand svg{flex:none}
+.brand h1{font-size:18px;margin:0;font-weight:700;letter-spacing:-.01em}
+.store{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.dot.bad{background:var(--danger)}
+nav.tabs{display:flex;gap:4px;background:var(--sunken);padding:4px;border-radius:10px;margin-bottom:12px}
+nav.tabs button{flex:1;border:0;background:transparent;color:var(--muted);font:600 15px var(--sans);padding:9px;border-radius:7px;cursor:pointer}
+nav.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.stack{display:grid;gap:12px}
+label.lbl{display:block;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px}
+input[type=text],input[type=date],input[type=time],input[type=password]{width:100%;font:500 16px var(--sans);color:var(--ink);background:var(--ground);border:1px solid var(--line);border-radius:8px;padding:11px 12px;min-width:0}
+input.code{font:700 22px var(--mono);letter-spacing:.05em;padding:11px 14px}
+input:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row>.grow{flex:1 1 200px;min-width:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 15px var(--sans);padding:10px 14px;border-radius:8px;cursor:pointer;white-space:nowrap;text-decoration:none}
+.btn:hover{background:var(--sunken)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn.danger.solid{background:var(--danger);color:var(--surface)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.big{padding:14px 22px;font-size:17px}
+.hint{color:var(--muted);font-size:13px;margin:8px 0 0}
+
+/* ---- khung camera ---- */
+.stagebox{display:flex;justify-content:center}
+.stage{position:relative;background:#000;border-radius:10px;overflow:hidden;width:100%;aspect-ratio:4/3;margin:0 auto}
+.stage video,.stage .shot{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;display:block}
+.stage .shot{object-fit:contain;background:#000}
+.stage .msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#d6dfda;padding:24px;font-size:14px}
+.scanzone{position:absolute;left:10%;right:10%;top:25%;bottom:25%;border:2px solid rgba(255,255,255,.55);border-radius:8px}
+.laser{position:absolute;left:4%;right:4%;top:50%;height:2px;background:var(--laser);box-shadow:0 0 10px var(--laser);animation:sweep 1.4s ease-in-out infinite alternate}
+@keyframes sweep{from{top:12%}to{top:88%}}
+.frame{position:absolute;left:10%;right:10%;top:10%;bottom:10%;--c:#fff;transition:--c .2s}
+.frame i{position:absolute;width:34px;height:34px;border:4px solid var(--c)}
+.frame i:nth-child(1){left:0;top:0;border-right:0;border-bottom:0;border-top-left-radius:8px}
+.frame i:nth-child(2){right:0;top:0;border-left:0;border-bottom:0;border-top-right-radius:8px}
+.frame i:nth-child(3){left:0;bottom:0;border-right:0;border-top:0;border-bottom-left-radius:8px}
+.frame i:nth-child(4){right:0;bottom:0;border-left:0;border-top:0;border-bottom-right-radius:8px}
+.frame.hold{--c:var(--hold)} .frame.go{--c:#3BD18F}
+.frame .bar{position:absolute;left:0;bottom:-10px;height:4px;border-radius:2px;background:var(--hold);width:0}
+.shade{position:absolute;inset:0;box-shadow:inset 0 0 0 9999px rgba(0,0,0,.28);clip-path:polygon(0 0,100% 0,100% 100%,0 100%,0 10%,10% 10%,10% 90%,90% 90%,90% 10%,0 10%)}
+.pill{position:absolute;left:50%;top:10px;transform:translateX(-50%);background:rgba(10,20,15,.72);color:#fff;font-weight:600;font-size:14px;padding:6px 12px;border-radius:999px;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis}
+.flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+.flash.on{animation:flash .35s ease-out}
+@keyframes flash{from{opacity:.85}to{opacity:0}}
+@media (prefers-reduced-motion:reduce){.laser{animation:none}.flash.on{animation:none}}
+.codebadge{display:inline-flex;align-items:baseline;gap:8px;background:var(--accent-soft);color:var(--ink);border-radius:8px;padding:7px 12px;min-width:0}
+.codebadge b{font:700 20px var(--mono);letter-spacing:.04em;word-break:break-all}
+.codebadge span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.stamp{font:500 13px var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.bar2{display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;align-items:center;margin-top:10px}
+.bar2 .actions{display:flex;gap:8px;flex-wrap:wrap}
+.toggle{display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:600;color:var(--ink);cursor:pointer;user-select:none}
+.toggle input{width:18px;height:18px;accent-color:var(--accent)}
+.toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--ground);padding:10px 16px;border-radius:8px;font-weight:600;font-size:14px;box-shadow:var(--shadow);z-index:50;max-width:calc(100% - 32px)}
+.toast.err{background:var(--danger);color:#fff}
+.cfg{background:var(--danger-soft);color:var(--danger);border:1px solid var(--danger);border-radius:10px;padding:12px 14px;font-weight:600;margin-bottom:12px}
+h2{font-size:15px;margin:0 0 10px;font-weight:700}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;cursor:pointer;text-align:left;padding:0;color:inherit;font:inherit;display:flex;flex-direction:column}
+.card:hover{border-color:var(--accent)}
+.card img{width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--sunken);display:block}
+.card .meta{padding:7px 9px;display:grid;gap:1px}
+.card .c{font:700 13px var(--mono);word-break:break-all}
+.card .t{font:500 12px var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.filters{display:grid;grid-template-columns:2fr 1.3fr 1fr 1fr;gap:10px;align-items:end}
+@media (max-width:680px){.filters{grid-template-columns:1fr 1fr}.filters .f-code,.filters .f-date{grid-column:1/-1}}
+.filter-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.summary{margin:16px 0 10px;color:var(--muted);font-size:14px}
+.summary b{color:var(--ink)}
+.empty{padding:24px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:10px}
+dialog{border:0;padding:0;border-radius:12px;background:var(--surface);color:var(--ink);max-width:min(900px,calc(100% - 24px));width:100%;box-shadow:var(--shadow)}
+dialog::backdrop{background:rgba(5,12,9,.7)}
+dialog img{width:100%;max-height:65vh;object-fit:contain;background:#000;display:block}
+.dmeta{padding:12px 14px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center}
+.dmeta .actions{display:flex;gap:8px;flex-wrap:wrap}
+.delbox{padding:12px 14px;border-top:1px solid var(--line);background:var(--danger-soft)}
+.delerr{color:var(--danger);font-size:13px;font-weight:600;margin:8px 0 0}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg width="28" height="28" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="7" fill="#0B6E5A"/><g fill="#fff"><rect x="6" y="8" width="2" height="14"/><rect x="10" y="8" width="1" height="14"/><rect x="13" y="8" width="3" height="14"/><rect x="18" y="8" width="1" height="14"/><rect x="21" y="8" width="3" height="14"/></g><rect x="4" y="14.5" width="22" height="1.4" fill="#E0362C"/></svg>
+      <h1>Kho Ảnh Mã Vạch</h1>
+    </div>
+    <div class="store"><span class="dot" id="storeDot"></span><span id="storeText">Google Drive</span></div>
+  </header>
+
+  <div class="cfg" id="cfgWarn" hidden>Chưa cấu hình: mở file index.html, dán link Web app (đuôi /exec) vào dòng <code>const API_URL = "…"</code>.</div>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tabCap" aria-selected="true">Chụp ảnh</button>
+    <button role="tab" id="tabSearch" aria-selected="false">Tìm kiếm</button>
+  </nav>
+
+  <!-- ===== CHỤP ẢNH ===== -->
+  <section id="viewCap" class="stack">
+    <div class="panel">
+      <!-- dòng mã -->
+      <div id="codeRow" class="row">
+        <div class="grow"><input type="text" id="codeInput" class="code" inputmode="numeric" autocomplete="off" placeholder="Quét hoặc nhập mã…" aria-label="Mã vạch"></div>
+        <button class="btn primary" id="btnToPhoto" type="button">Chụp →</button>
+      </div>
+      <div id="photoRow" class="row" hidden style="justify-content:space-between">
+        <div class="codebadge"><span>Mã</span><b id="curCode"></b></div>
+        <button class="btn" id="btnChangeCode" type="button">← Quét mã khác</button>
+      </div>
+
+      <!-- camera -->
+      <div class="stagebox" style="margin-top:10px">
+        <div class="stage" id="stage">
+          <video id="cam" playsinline muted autoplay></video>
+          <div id="scanOverlay"><div class="scanzone"><div class="laser"></div></div></div>
+          <div id="photoOverlay" hidden><div class="shade"></div><div class="frame" id="frame"><i></i><i></i><i></i><i></i><div class="bar" id="holdBar"></div></div></div>
+          <img class="shot" id="shotImg" alt="Ảnh vừa chụp" hidden>
+          <div class="pill" id="pill">Đưa mã vạch vào khung</div>
+          <div class="flash" id="flash"></div>
+          <div class="msg" id="camMsg" hidden></div>
+        </div>
+      </div>
+
+      <!-- điều khiển -->
+      <div class="bar2" id="scanCtl">
+        <span class="hint" style="margin:0" id="bgHint">Đặt điện thoại cố định? Bấm “Ghi nền trống” khi khung trống để không bị chụp nhầm.</span>
+        <div class="actions"><button class="btn" id="btnBg" type="button" title="Để khung trống (không có sản phẩm) rồi bấm">Ghi nền trống</button><button class="btn" id="btnCamToggle" type="button">Tắt camera</button></div>
+      </div>
+      <div class="bar2" id="photoCtl" hidden>
+        <div class="actions">
+          <label class="toggle"><input type="checkbox" id="optAuto" checked> Tự chụp</label>
+          <label class="toggle"><input type="checkbox" id="optAutoSave"> Tự lưu</label>
+        </div>
+        <div class="actions"><button class="btn primary big" id="btnShoot" type="button">● Chụp ngay</button></div>
+      </div>
+      <div class="bar2" id="previewCtl" hidden>
+        <div class="stamp" id="shotTime"></div>
+        <div class="actions">
+          <button class="btn" id="btnRetake" type="button">Chụp lại</button>
+          <button class="btn primary big" id="btnSave" type="button">Lưu</button>
+        </div>
+      </div>
+      <div class="bar2" id="nativeCtl" hidden>
+        <span class="hint" style="margin:0">Trình duyệt này không mở được camera trực tiếp.</span>
+        <div class="actions">
+          <button class="btn" id="btnNativeScan" type="button">Quét bằng camera máy</button>
+          <button class="btn primary" id="btnNativeShot" type="button" hidden>Chụp bằng camera máy</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Vừa lưu gần đây</h2>
+      <div class="grid" id="recentGrid"></div>
+      <div class="empty" id="recentEmpty">Chưa có ảnh nào.</div>
+    </div>
+  </section>
+
+  <!-- ===== TÌM KIẾM ===== -->
+  <section id="viewSearch" hidden>
+    <div class="panel">
+      <div class="filters">
+        <div class="f-code"><label class="lbl" for="sCode">Mã</label><input type="text" id="sCode" inputmode="numeric" autocomplete="off" placeholder="Nhập hoặc quét mã"></div>
+        <div class="f-date"><label class="lbl" for="sDate">Ngày chụp</label><input type="date" id="sDate"></div>
+        <div><label class="lbl" for="sFrom">Từ giờ</label><input type="time" id="sFrom"></div>
+        <div><label class="lbl" for="sTo">Đến giờ</label><input type="time" id="sTo"></div>
+      </div>
+      <div class="filter-actions">
+        <button class="btn primary" id="btnSearch" type="button">Tìm kiếm</button>
+        <button class="btn" id="btnClearTime" type="button">Bỏ lọc thời gian</button>
+      </div>
+      <p class="hint">Không chọn thời gian: hiển thị tất cả ảnh của mã. Chọn ngày (và giờ:phút nếu cần) để lọc theo thời điểm chụp.</p>
+    </div>
+    <p class="summary" id="sSummary">Nhập mã để tìm ảnh.</p>
+    <div class="grid" id="sGrid"></div>
+  </section>
+</div>
+
+<dialog id="viewer">
+  <img id="vImg" alt="">
+  <div class="dmeta">
+    <div><div style="font:700 18px var(--mono);word-break:break-all" id="vCode"></div><div class="stamp" id="vTime"></div></div>
+    <div class="actions">
+      <a class="btn" id="vDrive" target="_blank" rel="noopener">Mở trong Drive</a>
+      <button class="btn danger" id="vDelete" type="button">Xoá</button>
+      <button class="btn" id="vClose" type="button">Đóng</button>
+    </div>
+  </div>
+  <form class="delbox" id="delBox" hidden>
+    <label class="lbl" for="delPass">Mật khẩu xoá ảnh</label>
+    <div class="row">
+      <div class="grow"><input type="password" id="delPass" autocomplete="off" placeholder="Nhập mật khẩu"></div>
+      <button class="btn danger solid" id="delConfirm" type="submit">Xác nhận xoá</button>
+      <button class="btn" id="delCancel" type="button">Huỷ</button>
+    </div>
+    <p class="delerr" id="delErr" hidden></p>
+  </form>
+</dialog>
+<div class="toast" id="toast" hidden></div>
+<input type="file" id="scanFile" accept="image/*" capture="environment" class="sr" tabindex="-1">
+<input type="file" id="nativeFile" accept="image/*" capture="environment" class="sr" tabindex="-1">
+<canvas id="work" hidden></canvas>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, "0");
+const fmt = ms => { const d = new Date(ms); return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+const cleanCode = s => (s || "").replace(/[\r\n\t]/g, "").trim();
+const finePointer = matchMedia("(pointer:fine)").matches;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+let toastT;
+function toast(msg, err) { const t = $("toast"); t.textContent = msg; t.className = "toast" + (err ? " err" : ""); t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2800); }
+
+/* ================= Máy chủ (Apps Script) ================= */
+const inGas = !!(window.google && google.script && google.script.run);
+const apiReady = inGas || (typeof API_URL === "string" && /^https:\/\/script\.google\.com\/.+\/exec$/.test(API_URL.trim()));
+if (!apiReady) { $("cfgWarn").hidden = false; $("storeDot").className = "dot bad"; $("storeText").textContent = "Chưa kết nối"; }
+function call(fn, ...args) {
+  if (inGas) return new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn](...args));
+  if (!apiReady) return Promise.reject(new Error("Chưa cấu hình API_URL"));
+  return fetch(API_URL.trim(), { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ fn, args }) })
+    .then(r => r.json()).then(j => { if (!j.ok) throw new Error(j.error || "Lỗi máy chủ"); return j.data; });
+}
+const thumb = (id, w) => `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w${w}`;
+const fullCache = new Map();
+function setImg(img, id, w) {
+  img.onerror = async () => { img.onerror = null; try { if (!fullCache.has(id)) fullCache.set(id, await call("layAnh", id)); img.src = fullCache.get(id); } catch (e) {} };
+  img.src = thumb(id, w);
+}
+const blobToBase64 = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
+
+/* ================= Giải mã vạch ================= */
+const ZX_HINTS = (() => { if (!window.ZXing) return null; const h = new Map(); h.set(ZXing.DecodeHintType.TRY_HARDER, true); return h; })();
+const zxReader = window.ZXing ? new ZXing.MultiFormatReader() : null;
+function decodeCanvas(cv) {
+  if (!zxReader) return null;
+  const w = cv.width, h = cv.height, data = cv.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  const lum = new Uint8ClampedArray(w * h);
+  for (let i = 0, j = 0; j < lum.length; i += 4, j++) lum[j] = (data[i] * 306 + data[i + 1] * 601 + data[i + 2] * 117) >> 10;
+  const src = new ZXing.RGBLuminanceSource(lum, w, h);
+  for (const mk of [() => new ZXing.HybridBinarizer(src), () => new ZXing.GlobalHistogramBinarizer(src)]) {
+    try { return zxReader.decode(new ZXing.BinaryBitmap(mk()), ZX_HINTS).getText(); } catch (e) {}
+  }
+  return null;
+}
+// Vẽ vùng (sx,sy,sw,sh) của nguồn vào canvas, cạnh dài tối đa maxSide, có thể xoay 90°
+function drawTo(cv, img, sx, sy, sw, sh, maxSide, rotate) {
+  const k = Math.min(1, maxSide / Math.max(sw, sh)), w = Math.round(sw * k), h = Math.round(sh * k);
+  cv.width = rotate ? h : w; cv.height = rotate ? w : h;
+  const ctx = cv.getContext("2d", { willReadFrequently: true });
+  ctx.save(); if (rotate) { ctx.translate(h, 0); ctx.rotate(Math.PI / 2); }
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h); ctx.restore();
+}
+let detector = null;
+if ("BarcodeDetector" in window) { try { detector = new BarcodeDetector(); } catch (e) {} }
+
+/* ================= Tabs ================= */
+function showTab(which) {
+  const cap = which === "cap";
+  $("tabCap").setAttribute("aria-selected", cap); $("tabSearch").setAttribute("aria-selected", !cap);
+  $("viewCap").hidden = !cap; $("viewSearch").hidden = cap;
+  if (cap) { if (camWanted) startCamera(); if (mode === "scan" && finePointer) $("codeInput").focus(); }
+  else { stopCamera(); $("sCode").focus(); }
+}
+$("tabCap").onclick = () => showTab("cap");
+$("tabSearch").onclick = () => showTab("search");
+
+/* ================= Camera ================= */
+const video = $("cam"), stage = $("stage");
+let stream = null, camWanted = true, liveOK = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext);
+async function startCamera() {
+  if (stream || !liveOK) { if (!liveOK) showNative(); return; }
+  $("camMsg").hidden = false; $("camMsg").textContent = "Đang mở camera…";
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    video.srcObject = stream; await video.play();
+    await new Promise(r => video.videoWidth ? r() : video.addEventListener("loadedmetadata", r, { once: true }));
+    const ar = video.videoWidth / video.videoHeight;
+    stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+    stage.style.maxWidth = `min(100%, ${(62 * ar).toFixed(1)}vh)`;
+    $("camMsg").hidden = true; $("btnCamToggle").textContent = "Tắt camera";
+    $("pill").hidden = mode === "preview";
+    startLoop();
+  } catch (e) {
+    stream = null;
+    if (e && (e.name === "NotAllowedError" || e.name === "SecurityError")) {
+      $("camMsg").textContent = "Chưa được cấp quyền camera. Bấm biểu tượng ổ khoá trên thanh địa chỉ → cho phép Máy ảnh, rồi tải lại trang.";
+    } else { liveOK = false; }
+    if (!liveOK) showNative();
+  }
+}
+function stopCamera() {
+  stopLoop();
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null;
+}
+$("btnCamToggle").onclick = () => {
+  if (stream) { camWanted = false; stopCamera(); $("camMsg").hidden = false; $("camMsg").textContent = "Camera đang tắt. Dùng máy quét cầm tay hoặc bật lại camera."; $("btnCamToggle").textContent = "Bật camera"; }
+  else { camWanted = true; startCamera(); }
+};
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stopCamera(); else if (camWanted && !$("viewCap").hidden && mode !== "preview") startCamera();
+});
+
+/* ================= Trạng thái ================= */
+let mode = "scan", currentCode = "", lastSaved = { code: "", until: 0 }, shot = null;
+function setMode(m) {
+  mode = m;
+  const scan = m === "scan", photo = m === "photo", prev = m === "preview";
+  $("codeRow").hidden = !scan; $("photoRow").hidden = scan;
+  $("scanOverlay").hidden = !scan; $("photoOverlay").hidden = !photo;
+  $("shotImg").hidden = !prev;
+  $("scanCtl").hidden = !scan || !liveOK; $("photoCtl").hidden = !photo || !liveOK; $("previewCtl").hidden = !prev;
+  $("nativeCtl").hidden = liveOK || prev;
+  $("btnNativeScan").hidden = !scan; $("btnNativeShot").hidden = !photo;
+  $("pill").hidden = prev || !stream;
+  if (scan) setPill("Đưa mã vạch vào khung");
+  if (photo) armAuto();
+}
+function setPill(t) { $("pill").textContent = t; }
+function showNative() {
+  $("camMsg").hidden = false;
+  $("camMsg").textContent = "Không mở được camera trực tiếp ở đây. Dùng máy quét cầm tay, hoặc nút camera máy bên dưới.";
+  setMode(mode);
+}
+
+/* ================= Bước 1: mã ================= */
+const codeInput = $("codeInput");
+let idleT = null, lastKey = 0, fastRun = 0;
+codeInput.addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); goPhoto(); return; }
+  const now = performance.now(); fastRun = (now - lastKey < 60) ? fastRun + 1 : 0; lastKey = now;
+});
+codeInput.addEventListener("input", () => {
+  clearTimeout(idleT);
+  if (cleanCode(codeInput.value).length >= 4 && fastRun >= 3) idleT = setTimeout(goPhoto, 250);
+});
+$("btnToPhoto").onclick = () => goPhoto();
+function goPhoto(codeArg) {
+  clearTimeout(idleT);
+  const v = cleanCode(typeof codeArg === "string" ? codeArg : codeInput.value);
+  if (!v) { toast("Chưa có mã. Hãy quét hoặc nhập mã.", true); return; }
+  currentCode = v; $("curCode").textContent = v; codeInput.value = v; codeInput.blur();
+  if (navigator.vibrate) navigator.vibrate(60);
+  setMode("photo");
+}
+$("btnChangeCode").onclick = backToScan;
+function backToScan() {
+  if (shot && shot.url) URL.revokeObjectURL(shot.url);
+  shot = null; codeInput.value = "";
+  setMode("scan");
+  if (camWanted && !stream) startCamera();
+  if (finePointer) codeInput.focus();
+}
+
+/* ================= Vòng lặp camera: quét mã + tự chụp ================= */
+let loopT = null, busy = false, lastScanAt = 0;
+function startLoop() { if (!loopT) loopT = setInterval(tick, 110); }
+function stopLoop() { clearInterval(loopT); loopT = null; }
+async function tick() {
+  if (!stream || busy || !video.videoWidth) return;
+  busy = true;
+  try {
+    if (mode === "scan") await scanTick();
+    else if (mode === "photo" && $("optAuto").checked) autoTick();
+  } catch (e) {} finally { busy = false; }
+}
+async function scanTick() {
+  const now = performance.now(); if (now - lastScanAt < 220) return; lastScanAt = now;
+  const vw = video.videoWidth, vh = video.videoHeight;
+  let found = null;
+  if (detector) { const r = await detector.detect(video); if (r.length) found = r[0].rawValue; }
+  else {
+    const cv = $("work");
+    drawTo(cv, video, vw * .08, vh * .2, vw * .84, vh * .6, 1000, false); found = decodeCanvas(cv);
+    if (!found && vh > vw) { drawTo(cv, video, vw * .2, vh * .08, vw * .6, vh * .84, 1000, true); found = decodeCanvas(cv); }
+  }
+  found = cleanCode(found);
+  if (!found || mode !== "scan") return;
+  if (found === lastSaved.code && Date.now() < lastSaved.until) return; // vừa lưu mã này, chờ đổi sản phẩm
+  goPhoto(found);
+}
+
+/* ---- Tự chụp: phát hiện có chuyển động (đưa sản phẩm vào) rồi đứng yên trong khung ---- */
+const SW = 64, SH = 48, MOTION = 9, STILL = 3.2, HOLD_FRAMES = 7, WARMUP_MS = 700, PRESENCE = 10;
+const smp = document.createElement("canvas"); smp.width = SW; smp.height = SH;
+const sctx = smp.getContext("2d", { willReadFrequently: true });
+let prevG = null, armedAt = 0, sawMotion = false, still = 0;
+function armAuto() {
+  prevG = null; armedAt = performance.now(); sawMotion = false; still = 0;
+  $("frame").className = "frame"; $("holdBar").style.width = "0";
+  setPill($("optAuto").checked ? "Đưa sản phẩm vào khung" : "Căn sản phẩm trong khung rồi bấm Chụp");
+}
+$("optAuto").onchange = () => { try { localStorage.setItem("kamv_auto", $("optAuto").checked ? "1" : "0"); } catch (e) {} if (mode === "photo") armAuto(); };
+$("optAutoSave").onchange = () => { try { localStorage.setItem("kamv_autosave", $("optAutoSave").checked ? "1" : "0"); } catch (e) {} };
+try { if (localStorage.getItem("kamv_auto") === "0") $("optAuto").checked = false; if (localStorage.getItem("kamv_autosave") === "1") $("optAutoSave").checked = true; } catch (e) {}
+
+function sampleGray() {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  sctx.drawImage(video, vw * .1, vh * .1, vw * .8, vh * .8, 0, 0, SW, SH);
+  const d = sctx.getImageData(0, 0, SW, SH).data, g = new Uint8Array(SW * SH);
+  for (let i = 0, j = 0; j < g.length; i += 4, j++) g[j] = (d[i] * 77 + d[i + 1] * 150 + d[i + 2] * 29) >> 8;
+  return g;
+}
+const meanDiff = (a, b) => { let s = 0; for (let j = 0; j < a.length; j++) s += Math.abs(a[j] - b[j]); return s / a.length; };
+/* Nền trống: ảnh khung khi không có sản phẩm. Có nền → chỉ tự chụp khi khung khác nền (có sản phẩm). */
+let bgG = null;
+try { const raw = localStorage.getItem("kamv_bg"); if (raw) bgG = Uint8Array.from(atob(raw), c => c.charCodeAt(0)); if (bgG && bgG.length !== SW * SH) bgG = null; } catch (e) {}
+function showBgState() { $("btnBg").textContent = bgG ? "Ghi lại nền trống ✓" : "Ghi nền trống"; if (bgG) $("bgHint").textContent = "Đã ghi nền trống — chỉ tự chụp khi có sản phẩm trong khung."; }
+showBgState();
+$("btnBg").onclick = () => {
+  if (!stream || !video.videoWidth) { toast("Bật camera trước.", true); return; }
+  bgG = sampleGray();
+  try { localStorage.setItem("kamv_bg", btoa(String.fromCharCode(...bgG))); } catch (e) {}
+  showBgState(); toast("Đã ghi nhớ nền trống.");
+};
+function autoTick() {
+  const g = sampleGray();
+  if (!prevG) { prevG = g; return; }
+  const diff = meanDiff(g, prevG); prevG = g;
+  if (performance.now() - armedAt < WARMUP_MS) return;
+  const fr = $("frame");
+  if (diff > MOTION) { sawMotion = true; still = 0; fr.className = "frame"; $("holdBar").style.width = "0"; setPill("Đặt sản phẩm vào khung…"); return; }
+  if (!sawMotion) return;
+  if (diff < STILL) still++; else still = Math.max(0, still - 1);
+  $("holdBar").style.width = Math.min(100, still / HOLD_FRAMES * 100) + "%";
+  if (still > 0) { fr.className = "frame hold"; setPill("Giữ yên…"); }
+  if (still >= HOLD_FRAMES) {
+    if (bgG && meanDiff(g, bgG) < PRESENCE) { still = 0; sawMotion = false; fr.className = "frame"; $("holdBar").style.width = "0"; setPill("Chưa thấy sản phẩm trong khung"); return; }
+    fr.className = "frame go"; capture();
+  }
+}
+
+/* ================= Chụp & lưu ================= */
+function toJpeg(src, sx, sy, sw, sh) {
+  const max = 1600, k = Math.min(1, max / Math.max(sw, sh));
+  const cv = document.createElement("canvas"); cv.width = Math.round(sw * k); cv.height = Math.round(sh * k);
+  cv.getContext("2d").drawImage(src, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+  return new Promise(res => cv.toBlob(res, "image/jpeg", 0.85));
+}
+async function capture() {
+  if (mode !== "photo" || !video.videoWidth) return;
+  const takenAt = Date.now(); // giờ thực tế lúc chụp
+  const vw = video.videoWidth, vh = video.videoHeight;
+  mode = "capturing";
+  const f = $("flash"); f.classList.remove("on"); void f.offsetWidth; f.classList.add("on");
+  if (navigator.vibrate) navigator.vibrate(40);
+  const blob = await toJpeg(video, vw * .1, vh * .1, vw * .8, vh * .8); // ảnh = phần trong khung
+  showShot(blob, takenAt);
+  if ($("optAutoSave").checked) save();
+}
+function showShot(blob, takenAt) {
+  shot = { blob, takenAt, url: URL.createObjectURL(blob) };
+  $("shotImg").src = shot.url;
+  $("shotTime").textContent = "Chụp lúc " + fmt(takenAt);
+  setMode("preview");
+  $("btnSave").disabled = false; $("btnSave").textContent = "Lưu";
+  if (!$("optAutoSave").checked) $("btnSave").focus();
+}
+$("btnShoot").onclick = capture;
+$("btnRetake").onclick = () => { if (shot) URL.revokeObjectURL(shot.url); shot = null; setMode("photo"); };
+$("btnSave").onclick = save;
+async function save() {
+  if (!shot || $("btnSave").disabled) return;
+  const b = $("btnSave"); b.disabled = true; b.textContent = "Đang lưu…";
+  try {
+    await call("luuAnh", currentCode, shot.takenAt, await blobToBase64(shot.blob));
+    toast(`Đã lưu ${currentCode} — ${fmt(shot.takenAt)}`);
+    lastSaved = { code: currentCode, until: Date.now() + 5000 };
+    loadRecent();
+    backToScan();
+  } catch (e) {
+    toast("Chưa lưu được ảnh. Kiểm tra mạng rồi bấm Lưu lại.", true);
+    b.disabled = false; b.textContent = "Lưu";
+  }
+}
+
+/* ================= Không có camera trực tiếp: dùng camera máy ================= */
+$("btnNativeScan").onclick = () => $("scanFile").click();
+$("btnNativeShot").onclick = () => $("nativeFile").click();
+async function loadImage(file) {
+  try { const b = await createImageBitmap(file, { imageOrientation: "from-image" }); return { img: b, w: b.width, h: b.height }; }
+  catch (e) {
+    const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
+    return { img: im, w: im.naturalWidth, h: im.naturalHeight };
+  }
+}
+$("scanFile").onchange = async e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
+  toast("Đang đọc mã vạch…");
+  try {
+    const { img, w, h } = await loadImage(f); let found = null;
+    if (detector) { try { const r = await detector.detect(img); if (r.length) found = r[0].rawValue; } catch (x) {} }
+    const cv = $("work");
+    for (const size of [1600, 2400, 1000, 700]) { if (found) break; for (const rot of [false, true]) { drawTo(cv, img, 0, 0, w, h, size, rot); found = decodeCanvas(cv); if (found) break; await sleep(0); } }
+    if (found) goPhoto(found); else toast("Không đọc được mã. Chụp gần, rõ nét — hoặc nhập tay.", true);
+  } catch (x) { toast("Không đọc được ảnh.", true); }
+};
+$("nativeFile").onchange = async e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
+  const takenAt = f.lastModified && f.lastModified <= Date.now() + 60000 ? f.lastModified : Date.now();
+  try { const { img, w, h } = await loadImage(f); showShot(await toJpeg(img, 0, 0, w, h), takenAt); if ($("optAutoSave").checked) save(); }
+  catch (x) { toast("Không đọc được ảnh này.", true); }
+};
+
+/* ================= Danh sách ảnh ================= */
+function renderGrid(el, items) {
+  el.replaceChildren(...items.map(it => {
+    const c = document.createElement("button"); c.className = "card"; c.type = "button";
+    const img = document.createElement("img"); img.loading = "lazy"; img.alt = "Ảnh mã " + it.code; setImg(img, it.fileId, 400);
+    const m = document.createElement("div"); m.className = "meta";
+    const a = document.createElement("div"); a.className = "c"; a.textContent = it.code;
+    const t = document.createElement("div"); t.className = "t"; t.textContent = fmt(it.takenAt);
+    m.append(a, t); c.append(img, m); c.onclick = () => openViewer(it);
+    return c;
+  }));
+}
+async function loadRecent() {
+  try { const items = await call("ganDay", 8); renderGrid($("recentGrid"), items); $("recentEmpty").hidden = items.length > 0; $("recentEmpty").textContent = "Chưa có ảnh nào."; }
+  catch (e) { $("recentEmpty").hidden = false; $("recentEmpty").textContent = apiReady ? "Không tải được danh sách ảnh." : "Chưa kết nối máy chủ."; }
+}
+
+/* ================= Tìm kiếm ================= */
+function toMin(t) { if (!t) return null; const [h, m] = t.split(":").map(Number); return h * 60 + m; }
+async function doSearch() {
+  const code = cleanCode($("sCode").value);
+  if (!code) { $("sSummary").textContent = "Nhập mã để tìm ảnh."; $("sGrid").replaceChildren(); return; }
+  const date = $("sDate").value, from = $("sFrom").value, to = $("sTo").value;
+  $("sSummary").textContent = "Đang tìm…";
+  let items;
+  try { items = await call("timTheoMa", code); } catch (e) { $("sSummary").textContent = "Không tải được dữ liệu. Thử lại sau giây lát."; return; }
+  let desc = "tất cả thời gian";
+  if (date || from || to) {
+    const fm = toMin(from) ?? 0, tm = toMin(to) ?? (23 * 60 + 59);
+    items = items.filter(it => {
+      const d = new Date(it.takenAt);
+      if (date && `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` !== date) return false;
+      const mins = d.getHours() * 60 + d.getMinutes(); return mins >= fm && mins <= tm;
+    });
+    const [y, mo, da] = (date || "").split("-");
+    desc = (date ? `ngày ${da}/${mo}/${y}` : "mọi ngày") + ((from || to) ? `, từ ${from || "00:00"} đến ${to || "23:59"}` : "");
+  }
+  items.sort((a, b) => b.takenAt - a.takenAt);
+  const s = $("sSummary"); s.replaceChildren();
+  s.append(Object.assign(document.createElement("b"), { textContent: items.length + " ảnh" }), " của mã ", Object.assign(document.createElement("b"), { textContent: code }), ` — ${desc}.`);
+  renderGrid($("sGrid"), items);
+  if (!items.length) { const e = document.createElement("div"); e.className = "empty"; e.style.gridColumn = "1/-1"; e.textContent = "Không có ảnh nào khớp điều kiện."; $("sGrid").append(e); }
+}
+$("btnSearch").onclick = doSearch;
+$("sCode").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); doSearch(); } });
+["sDate", "sFrom", "sTo"].forEach(id => $(id).addEventListener("change", () => { if (cleanCode($("sCode").value)) doSearch(); }));
+$("btnClearTime").onclick = () => { $("sDate").value = ""; $("sFrom").value = ""; $("sTo").value = ""; doSearch(); };
+
+/* ================= Xem & xoá ảnh ================= */
+let viewing = null;
+function closeDelBox() { $("delBox").hidden = true; $("delPass").value = ""; $("delErr").hidden = true; $("vDelete").hidden = false; }
+function openViewer(it) {
+  viewing = it; closeDelBox();
+  setImg($("vImg"), it.fileId, 1600); $("vImg").alt = "Ảnh mã " + it.code;
+  $("vCode").textContent = it.code; $("vTime").textContent = "Chụp lúc " + fmt(it.takenAt);
+  $("vDrive").href = "https://drive.google.com/file/d/" + encodeURIComponent(it.fileId) + "/view";
+  $("viewer").showModal();
+}
+$("vClose").onclick = () => $("viewer").close();
+$("viewer").addEventListener("click", e => { if (e.target === $("viewer")) $("viewer").close(); });
+$("vDelete").onclick = () => { $("vDelete").hidden = true; $("delBox").hidden = false; $("delPass").focus(); };
+$("delCancel").onclick = closeDelBox;
+$("delBox").onsubmit = async e => {
+  e.preventDefault();
+  const pass = $("delPass").value, btn = $("delConfirm"), err = $("delErr");
+  if (!pass) { err.textContent = "Nhập mật khẩu để xoá."; err.hidden = false; return; }
+  btn.disabled = true; btn.textContent = "Đang xoá…"; err.hidden = true;
+  try { await call("xoaAnh", viewing.fileId, pass); $("viewer").close(); toast("Đã xoá ảnh."); loadRecent(); if (!$("viewSearch").hidden) doSearch(); }
+  catch (ex) {
+    const msg = String((ex && ex.message) || ex || "");
+    err.textContent = msg.includes("SAI_MAT_KHAU") ? "Sai mật khẩu. Ảnh chưa bị xoá." : msg.includes("TAM_KHOA") ? "Nhập sai quá nhiều lần. Chức năng xoá tạm khoá 10 phút." : "Không xoá được ảnh. Kiểm tra mạng rồi thử lại.";
+    err.hidden = false; $("delPass").select();
+  } finally { btn.disabled = false; btn.textContent = "Xác nhận xoá"; }
+};
+
+/* ================= Khởi động ================= */
+setMode("scan");
+startCamera();
+loadRecent();
+if (finePointer) codeInput.focus();
+})();
+</script>
+</body>
+</html>
