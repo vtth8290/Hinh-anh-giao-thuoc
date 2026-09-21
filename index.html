@@ -179,6 +179,7 @@ dialog img{width:100%;max-height:65vh;object-fit:contain;background:#000;display
       <div class="bar2" id="previewCtl" hidden>
         <div class="stamp" id="shotTime"></div>
         <div class="actions">
+          <label class="toggle" title="Bật: chụp xong tự lưu, không cần bấm Lưu"><input type="checkbox" id="optAutoSave2"> Tự lưu</label>
           <button class="btn" id="btnRetake" type="button">Chụp lại</button>
           <button class="btn primary big" id="btnSave" type="button">Lưu</button>
         </div>
@@ -186,6 +187,7 @@ dialog img{width:100%;max-height:65vh;object-fit:contain;background:#000;display
       <div class="bar2" id="nativeCtl" hidden>
         <span class="hint" style="margin:0">Trình duyệt này không mở được camera trực tiếp.</span>
         <div class="actions">
+          <label class="toggle"><input type="checkbox" id="optAutoSave3"> Tự lưu</label>
           <button class="btn" id="btnRetryCam" type="button">Thử lại camera</button>
           <button class="btn" id="btnNativeScan" type="button">Quét bằng camera máy</button>
           <button class="btn primary" id="btnNativeShot" type="button" hidden>Chụp bằng camera máy</button>
@@ -454,8 +456,20 @@ function armAuto() {
   setPill($("optAuto").checked ? "Đưa sản phẩm vào khung" : "Căn sản phẩm trong khung rồi bấm Chụp");
 }
 $("optAuto").onchange = () => { try { localStorage.setItem("kamv_auto", $("optAuto").checked ? "1" : "0"); } catch (e) {} if (mode === "photo") armAuto(); };
-$("optAutoSave").onchange = () => { try { localStorage.setItem("kamv_autosave", $("optAutoSave").checked ? "1" : "0"); } catch (e) {} };
-try { if (localStorage.getItem("kamv_auto") === "0") $("optAuto").checked = false; if (localStorage.getItem("kamv_autosave") === "1") $("optAutoSave").checked = true; } catch (e) {}
+/* Ô "Tự lưu" xuất hiện ở 3 chỗ, luôn cùng một trạng thái */
+const autoSaveBoxes = ["optAutoSave", "optAutoSave2", "optAutoSave3"].map($);
+const autoSaveOn = () => autoSaveBoxes[0].checked;
+autoSaveBoxes.forEach(b => b.onchange = () => {
+  const on = b.checked;
+  autoSaveBoxes.forEach(x => x.checked = on);
+  try { localStorage.setItem("kamv_autosave", on ? "1" : "0"); } catch (e) {}
+  toast(on ? "Đã bật tự lưu: chụp xong là lưu ngay." : "Đã tắt tự lưu: chụp xong phải bấm Lưu.");
+  if (on && mode === "preview" && shot) save(); // đang xem ảnh chờ lưu → lưu luôn
+});
+try {
+  if (localStorage.getItem("kamv_auto") === "0") $("optAuto").checked = false;
+  if (localStorage.getItem("kamv_autosave") === "1") autoSaveBoxes.forEach(x => x.checked = true);
+} catch (e) {}
 
 function sampleGray() {
   const vw = video.videoWidth, vh = video.videoHeight;
@@ -509,7 +523,7 @@ async function capture() {
   if (navigator.vibrate) navigator.vibrate(40);
   const blob = await toJpeg(video, vw * .1, vh * .1, vw * .8, vh * .8); // ảnh = phần trong khung
   showShot(blob, takenAt);
-  if ($("optAutoSave").checked) save();
+  if (autoSaveOn()) save();
 }
 function showShot(blob, takenAt) {
   shot = { blob, takenAt, url: URL.createObjectURL(blob) };
@@ -517,7 +531,7 @@ function showShot(blob, takenAt) {
   $("shotTime").textContent = "Chụp lúc " + fmt(takenAt);
   setMode("preview");
   $("btnSave").disabled = false; $("btnSave").textContent = "Lưu";
-  if (!$("optAutoSave").checked) $("btnSave").focus();
+  if (!autoSaveOn()) $("btnSave").focus();
 }
 $("btnShoot").onclick = capture;
 $("btnRetake").onclick = () => { if (shot) URL.revokeObjectURL(shot.url); shot = null; setMode("photo"); };
@@ -562,7 +576,7 @@ $("scanFile").onchange = async e => {
 $("nativeFile").onchange = async e => {
   const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
   const takenAt = f.lastModified && f.lastModified <= Date.now() + 60000 ? f.lastModified : Date.now();
-  try { const { img, w, h } = await loadImage(f); showShot(await toJpeg(img, 0, 0, w, h), takenAt); if ($("optAutoSave").checked) save(); }
+  try { const { img, w, h } = await loadImage(f); showShot(await toJpeg(img, 0, 0, w, h), takenAt); if (autoSaveOn()) save(); }
   catch (x) { toast("Không đọc được ảnh này.", true); }
 };
 
