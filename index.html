@@ -67,7 +67,7 @@ input:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid var(-
 .stage{position:relative;background:#000;border-radius:10px;overflow:hidden;width:100%;aspect-ratio:4/3;margin:0 auto}
 .stage video,.stage .shot{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;display:block}
 .stage .shot{object-fit:contain;background:#000}
-.stage .msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#d6dfda;padding:24px;font-size:14px}
+.stage .msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#e8efeb;padding:24px;font-size:14px;line-height:1.6;background:rgba(0,0,0,.55);z-index:3}
 .scanzone{position:absolute;left:10%;right:10%;top:25%;bottom:25%;border:2px solid rgba(255,255,255,.55);border-radius:8px}
 .laser{position:absolute;left:4%;right:4%;top:50%;height:2px;background:var(--laser);box-shadow:0 0 10px var(--laser);animation:sweep 1.4s ease-in-out infinite alternate}
 @keyframes sweep{from{top:12%}to{top:88%}}
@@ -186,6 +186,7 @@ dialog img{width:100%;max-height:65vh;object-fit:contain;background:#000;display
       <div class="bar2" id="nativeCtl" hidden>
         <span class="hint" style="margin:0">Trình duyệt này không mở được camera trực tiếp.</span>
         <div class="actions">
+          <button class="btn" id="btnRetryCam" type="button">Thử lại camera</button>
           <button class="btn" id="btnNativeScan" type="button">Quét bằng camera máy</button>
           <button class="btn primary" id="btnNativeShot" type="button" hidden>Chụp bằng camera máy</button>
         </div>
@@ -318,10 +319,18 @@ $("tabSearch").onclick = () => showTab("search");
 const video = $("cam"), stage = $("stage");
 let stream = null, camWanted = true, liveOK = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext);
 async function startCamera() {
-  if (stream || !liveOK) { if (!liveOK) showNative(); return; }
+  if (stream) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return showNative("Trình duyệt này không hỗ trợ mở camera trong trang. Dùng Chrome hoặc Safari bản mới.");
+  if (!window.isSecureContext) return showNative("Trang phải mở bằng địa chỉ https:// thì trình duyệt mới cho dùng camera.");
+  liveOK = true; setMode(mode);
   $("camMsg").hidden = false; $("camMsg").textContent = "Đang mở camera…";
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    } catch (e1) {
+      if (e1 && (e1.name === "OverconstrainedError" || e1.name === "NotFoundError")) stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      else throw e1;
+    }
     video.srcObject = stream; await video.play();
     await new Promise(r => video.videoWidth ? r() : video.addEventListener("loadedmetadata", r, { once: true }));
     const ar = video.videoWidth / video.videoHeight;
@@ -332,10 +341,13 @@ async function startCamera() {
     startLoop();
   } catch (e) {
     stream = null;
-    if (e && (e.name === "NotAllowedError" || e.name === "SecurityError")) {
-      $("camMsg").textContent = "Chưa được cấp quyền camera. Bấm biểu tượng ổ khoá trên thanh địa chỉ → cho phép Máy ảnh, rồi tải lại trang.";
-    } else { liveOK = false; }
-    if (!liveOK) showNative();
+    const n = (e && e.name) || "", msg = (e && e.message) || "";
+    let t;
+    if (n === "NotAllowedError" || n === "SecurityError") t = "Trình duyệt đang chặn camera của trang này. Bấm biểu tượng ổ khoá (hoặc camera) trên thanh địa chỉ → chọn Cho phép cho mục Máy ảnh → bấm “Thử lại camera”.";
+    else if (n === "NotFoundError" || n === "DevicesNotFoundError") t = "Không tìm thấy camera nào trên máy này. Máy tính để bàn thường không có webcam — hãy dùng điện thoại, hoặc cắm webcam rồi bấm “Thử lại camera”.";
+    else if (n === "NotReadableError" || n === "TrackStartError" || n === "AbortError") t = "Camera đang bị ứng dụng khác chiếm (Zoom, Teams, ứng dụng Camera…). Đóng ứng dụng đó rồi bấm “Thử lại camera”.";
+    else t = "Không mở được camera. Lỗi: " + (n || "không rõ") + (msg ? " — " + msg : "");
+    showNative(t);
   }
 }
 function stopCamera() {
@@ -367,9 +379,10 @@ function setMode(m) {
   if (photo) armAuto();
 }
 function setPill(t) { $("pill").textContent = t; }
-function showNative() {
+function showNative(t) {
+  liveOK = false; stopLoop();
   $("camMsg").hidden = false;
-  $("camMsg").textContent = "Không mở được camera trực tiếp ở đây. Dùng máy quét cầm tay, hoặc nút camera máy bên dưới.";
+  $("camMsg").textContent = (t || "Không mở được camera trực tiếp ở đây.") + " Trong lúc chờ, vẫn dùng được máy quét cầm tay và nút camera máy bên dưới.";
   setMode(mode);
 }
 
@@ -525,6 +538,7 @@ async function save() {
 }
 
 /* ================= Không có camera trực tiếp: dùng camera máy ================= */
+$("btnRetryCam").onclick = () => { camWanted = true; startCamera(); };
 $("btnNativeScan").onclick = () => $("scanFile").click();
 $("btnNativeShot").onclick = () => $("nativeFile").click();
 async function loadImage(file) {
